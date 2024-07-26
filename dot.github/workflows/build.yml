@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    branches-ignore:
+      - master
+  workflow_call:
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v3
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: 'package.json'
+        cache: 'pnpm'
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm type-checks
+    - run: pnpm lint
+    - run: pnpm test
+    - run: pnpm package
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: ./dist/
+
+  test-e2e:
+    name: E2E Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v3
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: 'package.json'
+        cache: 'pnpm'
+    - name: Install xsel
+      run: sudo apt-get install -y --no-install-recommends xsel
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm exec playwright install firefox
+    - run: pnpm build
+    - run: pnpm exec webext-agent install --addon-ids vimmatic@i-beam.org
+    - run: pnpm exec webext-agent create-addon --base-addon dist/firefox /tmp/vimmatic-mixedin
+    - run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- pnpm run test:e2e --headed

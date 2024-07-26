@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: googleapis/release-please-action@v4
+      id: release
+    - uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist
+      if: ${{ steps.release.outputs.release_created }}
+    - name: Upload to GitHub Releases
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG_NAME: ${{ steps.release.outputs.tag_name }}
+      run: |
+        gh release upload ${TAG_NAME} \
+          dist/vimmatic_${TAG_NAME}_chrome.zip \
+          dist/vimmatic_${TAG_NAME}_firefox.zip
+      if: ${{ steps.release.outputs.release_created }}
+    - name: Create source archive
+      env:
+        TAG_NAME: ${{ steps.release.outputs.tag_name }}
+      run: |
+        git archive --format=zip HEAD --output dist/vimmatic_${TAG_NAME}_source.zip
+      if: ${{ steps.release.outputs.release_created }}
+    - uses: browser-actions/release-firefox-addon@latest
+      with:
+        addon-id: "vimmatic"
+        addon-path: "dist/vimmatic_${{ steps.release.outputs.tag_name }}_firefox.zip"
+        source-path: "dist/vimmatic_${{ steps.release.outputs.tag_name }}_source.zip"
+        approval-note: |
+          You can get generated file simply by "pnpm install && pnpm build".
+          After that, bundled scripts and assets with manifest.json are
+          generated under "$PROJECT_ROOT/dist/firefox".
+        release-note: |
+          This versions contains some bug fixes. See full release note on GitHub:
+          https://github.com/ueokande/vimmatic/releases/tag/${{ steps.release.outputs.tag_name }}
+        compatibility-firefox-min: "102.0"
+        license: "MIT"
+        auth-api-issuer: ${{ secrets.AMO_AUTH_API_ISSUER }}
+        auth-api-secret: ${{ secrets.AMO_AUTH_API_SECRET }}
+      if: ${{ steps.release.outputs.release_created }}
+    - uses: browser-actions/release-chrome-extension@latest
+      with:
+        extension-id: "pghmfgnakhjiphmlcnhfpgopkcjhiedc"
+        extension-path: "dist/vimmatic_${{ steps.release.outputs.tag_name }}_chrome.zip"
+        oauth-client-id: ${{ secrets.CWS_OAUTH_CLIENT_ID }}
+        oauth-client-secret: ${{ secrets.CWS_OAUTH_CLIENT_SECRET }}
+        oauth-refresh-token: ${{ secrets.CWS_OAUTH_REFRESH_TOKEN }}
+      if: ${{ steps.release.outputs.release_created }}
